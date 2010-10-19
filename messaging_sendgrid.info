@@ -1,0 +1,7 @@
+; $Id: messaging_mail.info,v 1.1.4.1 2008/04/12 18:40:14 jareyero Exp $
+name = Sendgrid bulk mailing
+description = Mail Sending Method: Integration with Sendgrid API for bulk mailing.
+package = "Messaging"
+dependencies[] = messaging_mail
+core = 7.x
+files[] = messaging_sendgrid.inc

@@ -1,0 +1,55 @@
+<?php
+// $Id: messaging_mail.module,v 1.2.2.4.2.8.6.7 2010/06/04 17:57:11 jareyero Exp $
+/**
+ * @file
+ * Simple mail using Drupal API. Messaging method plug-in
+ * 
+ * This is also the base module for mail sending methods.
+ */
+
+/**
+ * Implementation of hook_menu()
+ */
+function messaging_mail_menu() {
+  $items['admin/config/messaging/settings/method/mail'] = array(
+    'title' => 'Mail',
+    'description' => 'Common options for mail methods',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('messaging_mail_admin_settings'),
+    'access arguments' => array('administer messaging'),
+    'file' => 'messaging_mail.admin.inc',
+    'type' => MENU_LOCAL_TASK,
+  );
+  return $items;  
+}
+
+/**
+ * Implementation of hook_messaging()
+ * 
+ * Currently the only operation supported is 'send methods' that will retrieve and array
+ * with information fo the sending methods provided by this module.
+ * 
+ * @param $op
+ *   Type of information to retrieve.
+ * @return mixed
+ *   Depending on $op   
+ */
+function messaging_sendgrid_messaging($op, $type = NULL) {
+  switch($op) {
+    case 'send methods':
+      $info['sendgrid'] = array(
+        'title' => t('Sendgrid mail'),
+        'class' => 'Messaging_Sendgrid_Method',
+        'name' => t('Mail'),
+        'description' => t('Get messages as plain text e-mail.'),
+      );
+      return $info;
+  }
+}
+
+/**
+ * Implementation of hook_disable()
+ */
+function messaging_mail_disable() {
+  Messaging_Method::method_disable('sendgrid');
+}
