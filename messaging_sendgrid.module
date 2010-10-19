@@ -42,7 +42,7 @@ function messaging_sendgrid_messaging($op, $type = NULL) {
         'title' => t('Sendgrid mail'),
         'class' => 'Messaging_Sendgrid_Method',
         'name' => t('Mail'),
-        'description' => t('Get messages as plain text e-mail.'),
+        'description' => t('Get messages as e-mail.'),
       );
       return $info;
   }
