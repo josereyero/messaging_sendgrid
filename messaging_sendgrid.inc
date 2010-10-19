@@ -16,30 +16,45 @@ class Messaging_Sendgrid_Method extends Messaging_Mail_Method {
   public $format = MESSAGING_FORMAT_PLAIN;
 
   /**
-   * Get address type
-   */
-  public static function address_type() {
-    return 'mail';
-  }
-
-  /**
    * Send message to multiple destinations
    */
   function send_multiple($destinations, $message) {
     $results = array();
-    foreach ($destinations as $key => $destination) {
+    if (count($destinations) == 1) {
+      $key = key($destinations);
+      $destination = reset($destinations);
       $results[$key] = $this->send_destination($destination, $message);
     }
-    return $results;    
+    else {
+      // In this case we use bulk sending features and fill in the results with the same value
+      $mail = $this->bulk_build($destinations, $message);
+      $result = $this->mail_send($mail, $message);
+      $results = array_combine(array_keys($destinations), array_fill(0, count($destinations), $result));
+    }
+    return $results;
   }
 
   /**
-   * Send message to address
+   * Build bulk mail for multiple addresses
+   * 
+   * Add the Sendgrid custom header which holds multiple recipient info and token replacement information
    */
-  function send_address($address, $message) {
-    // Build the message in drupal mail format
-    $mail = $this->mail_build($address, $message);
-    return $this->mail_send($mail, $message);
+  function bulk_build($destinations, $message) {
+    // First build a message using the default mail as 'to' address
+    $defaults = $this->default_params();
+    $mail = $this->mail_build($defaults['default_from'], $message);
+    // Add recipients and names using Sendgrid headers
+    $header = new Messaging_Sendgrid_SmtpApiHeader();
+    $recipients = $names = array();
+    foreach ($destinations as $destination) {
+      $recipients[] = $destination->get_address();
+      $names[] = $destination->get_name();
+    }
+    // We'll do token replacement with '-name-'
+    $header->addTo($recipients);
+    $header->addSubVal('-name-', $names);
+    $mail['headers']['X-SMTPAPI'] = $header->asJSON();
+    return $mail;
   }
   
   /**
@@ -57,168 +72,90 @@ class Messaging_Sendgrid_Method extends Messaging_Mail_Method {
     $mail = $system->format($mail);
     return $system->mail($mail);    
   }
-  /**
-   * Get message parameters for this method
-   */
-  function message_params($message) {
-    return $message->get_params('mail') + $this->default_params();    
-  }  
-  /**
-   * Get default method parameters, not depending on message
-   */
-  static function default_params() {
-    $default_mail = variable_get('site_mail', ini_get('sendmail_from'));
-    return array(
-      'default_from' => variable_get('messaging_mail_default_from', $default_mail),
-      'returnpath' => variable_get('messaging_mail_returnpath', $default_mail),
-    );
-  }
 
-  /**
-   * Rebuild message in Drupal mail format, right before sending
-   * 
-   * This mimics drupal_mail for finest access to properties
-   * @param $address
-   *   Email address to send to
-   * @param $message
-   *   Message object
-   */
-  protected function mail_build($address, $message) {
-    $params = $this->message_params($message);
-  
-    // Bundle up the variables into a structured array for altering.
-    $mail = array(
-      'headers' => $this->mail_headers($message, $params),
-      'id'       => $message->module . '_' . $message->key,
-      'module'   => $message->module,
-      'key'      => $message->key,
-      'to'       => $address,
-      'from'     => isset($params['from']) ? $params['from'] : $params['default_from'],
-      'language' => $message->get_language(),
-      'params'   => $params,
-      'subject'  => $message->get_subject(),
-      'body'     => $message->get_body(),
-      'attachments' => $message->get_files(),
-    );
-  
-    // Build the e-mail (get subject and body, allow additional headers) by
-    // invoking hook_mail() on this module. We cannot use module_invoke() as
-    // we need to have $message by reference in hook_mail().
-    if (function_exists($function = $message->module . '_mail')) {
-      $function($message->key, $mail, $params);
-    }
-  
-    // Invoke hook_mail_alter() to allow all modules to alter the resulting e-mail.
-    drupal_alter('mail', $mail);
-    
-    // Invoke drupal_mail without sending, then override headers
-    return $mail;
-  }
-  
-  /**
-   * Format from name and address
-   */
-  static function format_from($name, $mail) {
-    $tokens = array(
-      '[name]' => $name,
-      '[mail]' => $mail,
-    );
-    return strtr(variable_get('messaging_mail_sender_format', '[name] <[mail]>'), $tokens);
-  }
-
-  /**
-   * Prepare from address and mail headers
-   */
-  protected function mail_params($message, $params = array()) {
-    // The message 'from' will depend on message sender if present, otherwise default to site mail    
-    if (empty($params['from'])) {
-      $sender_name = $message->get_sender_name();
-      $sender_account = $message->get_sender_account();
-      if ($sender_name && $sender_account && !empty($sender_account->mail)) {
-        $from = $this->format_from($sender_name, $sender_account->mail);
-      } elseif ($sender_name) {
-        $from = $this->format_from($sender_name, $params['default_from']);
-      } else {
-        $from = $params['default_from'];
-      }
-      $params['from'] = $from;
-    } else {
-      $from = $params['from'];
-    }
-    $params += array(
-      'from'     => $from,
-      'headers'  => array(),
-    );
-    // Set headers, or add to existing ones. Pre-existing ones should not be overridden.
-    $headers = $this->mail_headers($message, $params);
-    $params['headers'] += $headers;  
-  
-    return $params;
-  }
-  
-  /**
-   * Get mail headers. Helper function for mail methods
-   * 
-   * @param $params
-   *   Array of parameters with the following elements
-   *   - 'from', Mail from address
-   *   - 'default_from', Default from address
-   *   - 'headers', Predefined headers to be added to this one
-   */
-  static function mail_headers($message, $params = array()) {
-    $headers = !empty($params['headers']) ? $params['headers'] : array();
-    // Add some default headers
-    $headers += array(
-      'MIME-Version'              => '1.0',
-      'Content-Type'              => 'text/plain; charset=UTF-8; format=flowed; delsp=yes',
-      'Content-Transfer-Encoding' => '8Bit',
-      'X-Mailer'                  => 'Drupal'
-    );
-    $default_from = $params['default_from'];
-    $from = !empty($params['from']) ? $params['from'] : $default_from;
-    // Set default headers depending on data
-    $headers += array(
-      'From' => $from,
-      'Reply-To' => $from,
-    );
-    if ($params['returnpath']) {
-      // To prevent e-mail from looking like spam, the addresses in the Sender and
-      // Return-Path headers should have a domain authorized to use the originating
-      // SMTP server. Errors-To is redundant, but shouldn't hurt.
-      $more_headers['Sender'] = $more_headers['Return-Path'] = $more_headers['Errors-To'] = $params['returnpath'];
-      $headers += $more_headers;
-    }
-    return $headers;
-  }
 }
 
 /**
- * Mail addresses
+ * SmtpApiHeader from http://wiki.sendgrid.com/doku.php?id=smtpapiheader.php
  */
-class Messaging_Mail_Address extends Messaging_Destination {
-  public $type = 'mail';
-  /**
-   * Get name for display
-   */
-  function address_name() {
-    return t('E-mail address');
-  }
-  /**
-   * Get user from address
-   */
-  public static function get_user_from_address($mail) {
-    return user_load_by_mail($mail);
-  }
-  /**
-   * Get address from user
-   */
-  public static function get_address_from_user($user) {
-    if ($user = messaging_user_object($user)) {
-      return !empty($user->mail) ? $user->mail : NULL;
-    }
-  }
+# Version 1.0
+# Last Updated 6/22/2009
 
-  public static function validate_address($address) {
-    return valid_email_address($address);
+class Messaging_Sendgrid_SmtpApiHeader
+{
+  var $data; 
+ 
+  function addTo($tos)
+  {
+    if (!isset($this->data['to'])) 
+    {
+      $this->data['to'] = array();
+    }
+    $this->data['to'] = array_merge($this->data['to'], (array)$tos);
+  }
+ 
+  function addSubVal($var, $val)
+  {
+    if (!isset($this->data['sub'])) 
+    {
+      $this->data['sub'] = array();
+    }
+ 
+    if (!isset($this->data['sub'][$var])) 
+    {
+      $this->data['sub'][$var] = array();
+    }
+    $this->data['sub'][$var] = array_merge($this->data['sub'][$var], (array)$val);
+  }
+ 
+ 
+  function setUniqueArgs($val)
+  {
+    if (!is_array($val)) return;
+    // checking for associative array
+    $diff = array_diff_assoc($val, array_values($val));
+    if(((empty($diff)) ? false : true))
+    {
+      $this->data['unique_args'] = $val;
+    } 
+  }
+ 
+  function setCategory($cat)
+  {
+    $this->data['category'] = $cat;
+  }
+ 
+  function addFilterSetting($filter, $setting, $value)
+  {
+    if (!isset($this->data['filters'])) 
+    {
+      $this->data['filters'] = array();
+    }
+ 
+    if (!isset($this->data['filters'][$filter])) 
+    {
+      $this->data['filters'][$filter] = array();
+    }
+ 
+    if (!isset($this->data['filters'][$filter]['settings'])) 
+    {
+      $this->data['filters'][$filter]['settings'] = array();
+    }
+    $this->data['filters'][$filter]['settings'][$setting] = $value;
+  }
+ 
+  function asJSON()
+  {
+    $json = json_encode($this->data);
+    // Add spaces so that the field can be foldd
+    $json = preg_replace('/(["\]}])([,:])(["\[{])/', '$1$2 $3', $json);
+    return $json;
+  }
+ 
+  function as_string()
+  {
+    $json = $this->asJSON();
+    $str = "X-SMTPAPI: " . wordwrap($json, 76, "\n   ");
+    return $str;
   }
 }

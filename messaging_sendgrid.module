@@ -10,6 +10,7 @@
 /**
  * Implementation of hook_menu()
  */
+/*
 function messaging_mail_menu() {
   $items['admin/config/messaging/settings/method/mail'] = array(
     'title' => 'Mail',
@@ -22,7 +23,7 @@ function messaging_mail_menu() {
   );
   return $items;  
 }
-
+*/
 /**
  * Implementation of hook_messaging()
  * 
@@ -50,6 +51,6 @@ function messaging_sendgrid_messaging($op, $type = NULL) {
 /**
  * Implementation of hook_disable()
  */
-function messaging_mail_disable() {
+function messaging_sendgrid_disable() {
   Messaging_Method::method_disable('sendgrid');
 }
