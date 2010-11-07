@@ -45,16 +45,19 @@ class Messaging_Sendgrid_Method extends Messaging_Mail_Method {
     // First build a message using the default mail as 'to' address
     $defaults = $this->default_params();
     $mail = $this->mail_build($defaults['default_from'], $message);
-    // Add recipients and names using Sendgrid headers
-    $header = new Messaging_Sendgrid_SmtpApiHeader();
-    $recipients = $names = array();
+    // Add recipients and tokens for replacement using Sendgrid headers
+    $recipients = $replaces = array();
     foreach ($destinations as $destination) {
       $recipients[] = $destination->get_address();
-      $names[] = $destination->get_name();
+      if ($tokens = $destination->get_tokens()) {
+        $replaces = array_merge_recursive($replaces, $tokens);
+      }
     }
-    // We'll do token replacement with '-name-'
+    $header = new Messaging_Sendgrid_SmtpApiHeader();
     $header->addTo($recipients);
-    $header->addSubVal('-name-', $names);
+    foreach ($replaces as $key => $values) {
+      $header->addSubVal($key, $values);
+    }
     $mail['headers']['X-SMTPAPI'] = $header->asJSON();
     return $mail;
   }
