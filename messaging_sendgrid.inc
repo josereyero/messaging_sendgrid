@@ -19,20 +19,15 @@ class Messaging_Sendgrid_Method extends Messaging_Mail_Method {
 
   /**
    * Send message to multiple destinations
+   * 
+   * @todo For single destination, things could go faster
    */
   function send_multiple($destinations, $message) {
     $results = array();
-    if (count($destinations) == 1) {
-      $key = key($destinations);
-      $destination = reset($destinations);
-      $results[$key] = $this->send_destination($destination, $message);
-    }
-    else {
-      // In this case we use bulk sending features and fill in the results with the same value
-      $mail = $this->bulk_build($destinations, $message);
-      $result = $this->mail_send($mail, $message);
-      $results = array_combine(array_keys($destinations), array_fill(0, count($destinations), $result));
-    }
+    // In this case we use bulk sending features and fill in the results with the same value
+    $mail = $this->bulk_build($destinations, $message);
+    $result = $this->mail_send($mail, $message);
+    $results = array_combine(array_keys($destinations), array_fill(0, count($destinations), $result));
     return $results;
   }
 
@@ -50,7 +45,9 @@ class Messaging_Sendgrid_Method extends Messaging_Mail_Method {
     foreach ($destinations as $destination) {
       $recipients[] = $destination->get_address();
       if ($tokens = $destination->get_tokens()) {
-        $replaces = array_merge_recursive($replaces, $tokens);
+        foreach ($tokens as $name => $value) {
+          $replaces[$name][] = $value;
+        }
       }
     }
     $header = new Messaging_Sendgrid_SmtpApiHeader();
@@ -204,11 +201,11 @@ class Messaging_Sendgrid_MailSystem extends DefaultMailSystem {
    */
   public function format(array $message) {
     // Join the body array into one string.
-    $message['body'] = implode("\n\n", $message['body']);
+    $message['body'] = implode("<br/>\n", $message['body']);
     // Convert any HTML to plain-text.
     // $message['body'] = drupal_html_to_text($message['body']);
     // Wrap the mail body for sending.
-    $message['body'] = drupal_wrap_mail($message['body']);
+    // $message['body'] = drupal_wrap_mail($message['body']);
     return $message;
   }
 
