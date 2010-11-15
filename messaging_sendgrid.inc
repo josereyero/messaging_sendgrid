@@ -18,6 +18,16 @@ class Messaging_Sendgrid_Method extends Messaging_Mail_Method {
   protected static $mail_system;
 
   /**
+   * Prepare template for this method.
+   * 
+   * Here we can clone and alter the template or just return the same
+   */  
+  function message_render($message) {
+    $template = clone $message->get_template();
+    $template->set_option('replace', FALSE);
+    return $template;
+  }
+  /**
    * Send message to multiple destinations
    * 
    * @todo For single destination, things could go faster
