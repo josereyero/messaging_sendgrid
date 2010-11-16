@@ -54,19 +54,40 @@ class Messaging_Sendgrid_Method extends Messaging_Mail_Method {
     $recipients = $replaces = array();
     foreach ($destinations as $destination) {
       $recipients[] = $destination->get_address();
-      if ($tokens = $destination->get_tokens()) {
-        foreach ($tokens as $name => $value) {
-          $replaces[$name][] = $value;
-        }
-      }
     }
     $header = new Messaging_Sendgrid_SmtpApiHeader();
     $header->addTo($recipients);
-    foreach ($replaces as $key => $values) {
+    $tokens = $this->bulk_tokens($destinations, $message->get_body());
+    foreach ($tokens as $key => $values) {
       $header->addSubVal($key, $values);
     }
     $mail['headers']['X-SMTPAPI'] = $header->asJSON();
     return $mail;
+  }
+  
+  /**
+   * Build tokens for replacement
+   * 
+   * @return array
+   *   Tokens indexed by token name and destination index
+   */
+  function bulk_tokens($destinations, $text) {
+    $text_tokens = token_scan($text);
+    $user_tokens = array();
+    foreach ($destinations as $index => $destination) {
+      $objects = array(
+        'destination' => $destination,
+        'user' => $destination->get_user()
+      );
+      foreach ($text_tokens as $type => $tokens) {
+        $type_tokens = token_generate($type, $tokens, $objects);
+        $type_tokens += array_combine($tokens, $tokens);
+        foreach ($type_tokens as $name => $value) {
+          $user_tokens[$name][$index] = $value;
+        }
+      }
+    }
+    return $user_tokens;
   }
   
   /**
