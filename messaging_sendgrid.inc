@@ -20,10 +20,12 @@ class Messaging_Sendgrid_Method extends Messaging_Mail_Method {
   /**
    * Prepare template for this method.
    * 
-   * Here we can clone and alter the template or just return the same
+   * This is a bulk sending method so we disable token replacement for 'header' and 'footer'
    */  
   function message_render($message) {
     $template = clone $message->get_template();
+    $template->set_option('clear', FALSE);
+    $template->build();
     $template->set_option('replace', FALSE);
     return $template;
   }
@@ -59,7 +61,7 @@ class Messaging_Sendgrid_Method extends Messaging_Mail_Method {
     $header->addTo($recipients);
     $tokens = $this->bulk_tokens($destinations, $message->get_body());
     foreach ($tokens as $key => $values) {
-      $header->addSubVal($key, $values);
+      $header->addSubVal($key, array_values($values));
     }
     $mail['headers']['X-SMTPAPI'] = $header->asJSON();
     return $mail;
