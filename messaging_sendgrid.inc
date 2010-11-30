@@ -59,7 +59,7 @@ class Messaging_Sendgrid_Method extends Messaging_Mail_Method {
     }
     $header = new Messaging_Sendgrid_SmtpApiHeader();
     $header->addTo($recipients);
-    $tokens = $this->bulk_tokens($destinations, $message->get_body());
+    $tokens = $this->bulk_tokens($destinations, $message->get_body(), $message->get_language());
     foreach ($tokens as $key => $values) {
       $header->addSubVal($key, array_values($values));
     }
@@ -73,16 +73,21 @@ class Messaging_Sendgrid_Method extends Messaging_Mail_Method {
    * @return array
    *   Tokens indexed by token name and destination index
    */
-  function bulk_tokens($destinations, $text) {
+  function bulk_tokens($destinations, $text, $language = NULL) {
     $text_tokens = token_scan($text);
     $user_tokens = array();
+    $options = array(
+      'language' => $language ? $language : language_default(),
+      'sanitize' => TRUE,
+    );
     foreach ($destinations as $index => $destination) {
       $objects = array(
         'destination' => $destination,
         'user' => $destination->get_user()
       );
+
       foreach ($text_tokens as $type => $tokens) {
-        $type_tokens = token_generate($type, $tokens, $objects);
+        $type_tokens = token_generate($type, $tokens, $objects, $options);
         $type_tokens += array_combine($tokens, $tokens);
         foreach ($type_tokens as $name => $value) {
           $user_tokens[$name][$index] = $value;
