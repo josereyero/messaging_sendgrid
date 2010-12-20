@@ -51,7 +51,7 @@ class Messaging_Sendgrid_Method extends Messaging_HTML_Mail_Method {
     foreach ($tokens as $key => $values) {
       $header->addSubVal($key, array_values($values));
     }
-    $mail['headers']['X-SMTPAPI'] = $header->asJSON();
+    $mail['headers']['X-SMTPAPI'] = $header->as_string();
     return $mail;
   }
   
@@ -180,7 +180,7 @@ class Messaging_Sendgrid_SmtpApiHeader
   function as_string()
   {
     $json = $this->asJSON();
-    $str = "X-SMTPAPI: " . wordwrap($json, 76, "\n   ");
+    $str = wordwrap($json, 76, "\n   ");
     return $str;
   }
 }
