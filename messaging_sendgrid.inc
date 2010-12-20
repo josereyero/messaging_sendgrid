@@ -8,27 +8,10 @@
 /**
  * Messaging Send Method: Sendgrid mass mailing
  */
-class Messaging_Sendgrid_Method extends Messaging_Mail_Method {
+class Messaging_Sendgrid_Method extends Messaging_HTML_Mail_Method {
   // Default group and address type
   public $method = 'sendgrid';
-  public $type = 'mail';
-  public $anonymous = TRUE;
-  public $format = MESSAGING_FORMAT_HTML;
-  // Mail system object
-  protected static $mail_system;
 
-  /**
-   * Prepare template for this method.
-   * 
-   * This is a bulk sending method so we disable token replacement for 'header' and 'footer'
-   */  
-  function message_render($message) {
-    $template = clone $message->get_template();
-    $template->set_option('clear', FALSE);
-    $template->build();
-    $template->set_option('replace', FALSE);
-    return $template;
-  }
   /**
    * Send message to multiple destinations
    * 
@@ -49,6 +32,11 @@ class Messaging_Sendgrid_Method extends Messaging_Mail_Method {
    * Add the Sendgrid custom header which holds multiple recipient info and token replacement information
    */
   function bulk_build($destinations, $message) {
+    // Disable token replacement for message
+    $template = $message->get_template();
+    $template->set_option('clear', FALSE);
+    $template->set_option('replace', FALSE);
+      
     // First build a message using the default mail as 'to' address
     $defaults = $this->default_params();
     $mail = $this->mail_build($defaults['default_from'], $message);
@@ -59,7 +47,7 @@ class Messaging_Sendgrid_Method extends Messaging_Mail_Method {
     }
     $header = new Messaging_Sendgrid_SmtpApiHeader();
     $header->addTo($recipients);
-    $tokens = $this->bulk_tokens($destinations, $message->get_body(), $message->get_language());
+    $tokens = $this->bulk_tokens($destinations, $template->render('body'), $message->get_language());
     foreach ($tokens as $key => $values) {
       $header->addSubVal($key, array_values($values));
     }
@@ -95,25 +83,6 @@ class Messaging_Sendgrid_Method extends Messaging_Mail_Method {
       }
     }
     return $user_tokens;
-  }
-  
-  /**
-   * Actually send mail through Drupal system
-   * 
-   * @param $mail
-   *   Built Drupal mail array, not rendered
-   * @param $message
-   *   Original message object
-   */
-  protected static function mail_send($mail, $message) {
-    // Retrieve the responsible implementation for this message.
-    //$system = drupal_mail_system($mail['module'], $mail['key']);
-    if (!isset(self::$mail_system)) {
-      self::$mail_system = new Messaging_Sendgrid_MailSystem();
-    }
-    // Format the message body, last chance for formatting
-    $mail = self::$mail_system->format($mail);
-    return self::$mail_system->mail($mail);    
   }
 
   /**
@@ -214,97 +183,4 @@ class Messaging_Sendgrid_SmtpApiHeader
     $str = "X-SMTPAPI: " . wordwrap($json, 76, "\n   ");
     return $str;
   }
-}
-
-/**
- * Sendgrid mail system
- * 
- * We use HTML formatting + we need to take care of properly filtering the headers.
- * 
- * The e-mail is sent through default PHP mail though, Sendgrid config should be in the backend
- * 
- * For Exim configuration see http://wiki.sendgrid.com/doku.php?id=exim4
- * 
- * @todo Explore other options for sending, like PHPMailer or
- */
-class Messaging_Sendgrid_MailSystem extends DefaultMailSystem {
-  /**
-   * Concatenate and wrap the e-mail body for plain-text mails.
-   *
-   * @param $message
-   *   A message array, as described in hook_mail_alter().
-   *
-   * @return
-   *   The formatted $message.
-   */
-  public function format(array $message) {
-    // Join the body array into one string.
-    $message['body'] = implode("<br/>\n", $message['body']);
-    // Convert any HTML to plain-text.
-    // $message['body'] = drupal_html_to_text($message['body']);
-    // Wrap the mail body for sending.
-    // $message['body'] = drupal_wrap_mail($message['body']);
-    return $message;
-  }
-
-  /**
-   * Send an e-mail message, using Drupal variables and default settings.
-   *
-   * @see http://php.net/manual/en/function.mail.php
-   * @see drupal_mail()
-   *
-   * @param $message
-   *   A message array, as described in hook_mail_alter().
-   * @return
-   *   TRUE if the mail was successfully accepted, otherwise FALSE.
-   */
-  public function mail(array $message) {
-    // If 'Return-Path' isn't already set in php.ini, we pass it separately
-    // as an additional parameter instead of in the header.
-    // However, if PHP's 'safe_mode' is on, this is not allowed.
-    if (isset($message['headers']['Return-Path']) && !ini_get('safe_mode')) {
-      $return_path_set = strpos(ini_get('sendmail_path'), ' -f');
-      if (!$return_path_set) {
-        $message['Return-Path'] = $message['headers']['Return-Path'];
-        unset($message['headers']['Return-Path']);
-      }
-    }
-    $mimeheaders = array();
-    foreach ($message['headers'] as $name => $value) {
-      $mimeheaders[] = $name . ': ' . mime_header_encode($value);
-    }
-    $line_endings = variable_get('mail_line_endings', MAIL_LINE_ENDINGS);
-    // Prepare mail commands.
-    $mail_subject = mime_header_encode($message['subject']);
-    // Note: e-mail uses CRLF for line-endings. PHP's API requires LF
-    // on Unix and CRLF on Windows. Drupal automatically guesses the
-    // line-ending format appropriate for your system. If you need to
-    // override this, adjust $conf['mail_line_endings'] in settings.php.
-    $mail_body = preg_replace('@\r?\n@', $line_endings, $message['body']);
-    // For headers, PHP's API suggests that we use CRLF normally,
-    // but some MTAs incorrectly replace LF with CRLF. See #234403.
-    $mail_headers = join("\n", $mimeheaders);
-    if (isset($message['Return-Path']) && !ini_get('safe_mode')) {
-      $mail_result = mail(
-        $message['to'],
-        $mail_subject,
-        $mail_body,
-        $mail_headers,
-        // Pass the Return-Path via sendmail's -f command.
-        '-f ' . $message['Return-Path']
-      );
-    }
-    else {
-      // The optional $additional_parameters argument to mail() is not allowed
-      // if safe_mode is enabled. Passing any value throws a PHP warning and
-      // makes mail() return FALSE.
-      $mail_result = mail(
-        $message['to'],
-        $mail_subject,
-        $mail_body,
-        $mail_headers
-      );
-    }
-    return $mail_result;
-  }  
 }
