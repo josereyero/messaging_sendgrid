@@ -2,6 +2,6 @@
 name = Sendgrid bulk mailing
 description = Mail Sending Method: Integration with Sendgrid API for bulk mailing.
 package = "Messaging"
-dependencies[] = messaging_mail
+dependencies[] = messaging_htmlmail
 core = 7.x
 files[] = messaging_sendgrid.inc
