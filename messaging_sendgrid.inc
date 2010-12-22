@@ -34,8 +34,10 @@ class Messaging_Sendgrid_Method extends Messaging_HTML_Mail_Method {
   function bulk_build($destinations, $message) {
     // Disable token replacement for message
     $template = $message->get_template();
+    // We do token replacement with tokens for available objects (no user or destination)
+    // But avoid to clear the ones that don't have a value yet
     $template->set_option('clear', FALSE);
-    $template->set_option('replace', FALSE);
+    //$template->set_option('replace', FALSE);
       
     // First build a message using the default mail as 'to' address
     $defaults = $this->default_params();
